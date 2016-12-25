@@ -1,0 +1,162 @@
+<html>
+<head>
+<style>
+body {
+    background-color: black;
+}
+.onoffswitch {
+    margin: auto;
+    position: relative; width: 162px;
+    -webkit-user-select:none; -moz-user-select:none; -ms-user-select: none;
+}
+.onoffswitch-checkbox {
+    display: none;
+}
+.onoffswitch-label {
+    display: block; overflow: hidden; cursor: pointer;
+    height: 60px; padding: 0; line-height: 60px;
+    border: 2px solid #CCCCCC; border-radius: 60px;
+    background-color: #3228F7;
+    transition: background-color 0.3s ease-in;
+}
+.onoffswitch-label:before {
+    content: "";
+    display: block; width: 60px; margin: 0px;
+    background: #FFFFFF;
+    position: absolute; top: 0; bottom: 0;
+    right: 100px;
+    border: 2px solid #CCCCCC; border-radius: 60px;
+    transition: all 0.3s ease-in 0s;
+}
+.onoffswitch-checkbox:checked + .onoffswitch-label {
+    background-color: #EB4646;
+}
+.onoffswitch-checkbox:checked + .onoffswitch-label, .onoffswitch-checkbox:checked + .onoffswitch-label:before {
+   border-color: #EB4646;
+}
+.onoffswitch-checkbox:checked + .onoffswitch-label:before {
+    right: 0px;
+}
+
+.mytable{
+    display: table;
+    width: 300px;
+    margin: auto;
+    color: white;
+}
+.tableRow {
+    display: table-row;
+}
+.tableHeading {
+    background-color: #EEE;
+    display: table-header-group;
+}
+.tableCell {
+    border: 1px solid #999999;
+    display: table-cell;
+    padding: 3px 10px;
+}
+
+</style>
+<script src="jquery-3.1.1.min.js"></script>
+<script>
+
+const STATE_ID="pump_ui";
+
+function stateTextToBool(s)
+{
+    s = s.trim().toLowerCase();
+
+    if(s=="off" || s=="av" || s=="" || s=="0")
+    {
+        return false;
+    }
+
+    return true;
+
+}
+
+$(document).ready(function() {
+    //Update initial state and things
+    $.getJSON("/states", function(result) {
+
+        var state="off";
+        if(result.hasOwnProperty(STATE_ID))
+        {
+            state=result[STATE_ID]["state"];
+        }
+        setToggleState(stateTextToBool(state));
+        updateStateList(result);
+
+        //Once all is loaded and set, allow changing of toggle
+        $("#myonoffswitch").attr("disabled", false);
+
+    });
+
+    //Handle toggle switching
+    $("#myonoffswitch").change(function() {
+        newstate=$(this).is(":checked")?"on":"off";
+
+        sendState(STATE_ID, newstate);
+    });
+
+});
+
+function sendState(id, state)
+{
+    //Disable button until request complete
+    $("#myonoffswitch").attr("disabled", true);
+
+    url="/update/" + id + "/" + state;
+
+
+    $.get(url, function(data) {
+        $("#myonoffswitch").attr("disabled", false);
+
+        $.getJSON("/states", function(result) {
+            updateStateList(result);
+        });
+    });
+}
+
+function updateStateList(states)
+{
+    table = $("#states")
+
+    table.empty();
+    for(var key in states)
+    {
+        stateinfo = states[key];
+        id=key;
+        state=stateinfo["state"];
+        lastupdate=stateinfo["updated"];
+
+        row = $('<div/>').addClass("tableRow").appendTo(table);
+        c1 = $('<div/>').addClass("tableCell").text(id).appendTo(row);
+        c1 = $('<div/>').addClass("tableCell").text(state).appendTo(row);
+        c1 = $('<div/>').addClass("tableCell").text(lastupdate).appendTo(row);
+
+    }
+}
+
+function setToggleState(state)
+{
+    $("#myonoffswitch").attr("checked", state);
+}
+
+function getInitialState()
+{
+    toggle = document.getElementById("myonoffswitch")
+    toggle.checked=true;
+}
+</script>
+</head>
+<body>
+<div class="onoffswitch">
+    <input type="checkbox" name="onoffswitch" class="onoffswitch-checkbox" id="myonoffswitch" disabled>
+    <label class="onoffswitch-label" for="myonoffswitch"></label>
+</div>
+<div id="states" class="mytable">
+</div>
+</body>
+</html>
