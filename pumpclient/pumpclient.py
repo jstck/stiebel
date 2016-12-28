@@ -4,7 +4,7 @@
 import json
 import RPi.GPIO as GPIO
 from datetime import datetime
-from time import time
+import time
 import urllib2
 import Queue
 
@@ -30,16 +30,26 @@ REMOTE_SERVER="http://stiebel.ormhuset.stack.se:8081"
 REMOTE_STATE_ID="pump"
 REMOTE_STATE_ID_UI="pump_ui"
 
+#How often to poll remote ui for updates, in seconds
 REMOTE_POLL_INTERVAL = 300
+
+#Sleep interval in main loop, seconds
+SLEEP_INTERVAL = 0.2
 
 event_queue = Queue.Queue()
 
 
 def modeSignal(state):
-    return state?MODE_ON:MODE_OFF
+    if state:
+        return MODE_ON
+    else:
+        return MODE_OFF
 
 def statusSignal(state):
-    return state?STATUS_ON:STATUS_OFF
+    if state:
+        return MODE_ON
+    else:
+        return MODE_OFF
 
 def setupGPIO(initalState=False):
     GPIO.setup(PIN_OUT_MODE, GPIO.OUT, initial=modeSignal(initalState))
@@ -63,7 +73,10 @@ def buttonPressOff():
 
 
 def stateBoolToStr(state):
-    return state?"on":"off"
+    if state:
+        return "on"
+    else:
+        return "off"
 
 def stateStrToBool(s):
     s = s.strip().lower()
@@ -82,6 +95,7 @@ def loadState():
     return False
 
 def saveState(state):
+    log("Saving state to file")
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     statedata = {
         "state": stateBoolToStr(state),
@@ -94,14 +108,24 @@ def saveState(state):
 
 def getUpdate():
     url="%s/state/%s" % (REMOTE_SERVER, REMOTE_STATE_ID_UI)
-    response = urllib2.urlopen(url)
-    data = json.load(response)
-    return stateStrToBool(data["state"])
+
+    try:
+        response = urllib2.urlopen(url)
+        data = json.load(response)
+        return stateStrToBool(data["state"])
+    except (urllib2.URLError, ValueError, KeyError) as e: #HTTP problem, invalid JSON, or key not found
+        log("Error getting update: %s" % e)
+
+    return None
 
 def sendUpdate(state, state_id=REMOTE_STATE_ID):
-    url="%s/update/%s/%s" % (REMOTE_SERVER, state_id, stateBoolToStr(state)
+    url="%s/update/%s/%s" % (REMOTE_SERVER, state_id, stateBoolToStr(state))
 
-    urllib2.urlopen(url)
+    try:
+        urllib2.urlopen(url)
+    except urllib2.URLError as e:
+        log("Failed sending update: %s" % e)
+
 
 def log(msg):
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -132,29 +156,41 @@ def main():
     log("Sending initial state to server")
     sendUpdate(state)
 
+    #Starting at 0 means remote server will be polled in first loop
     lastpoll=0
 
     #Main loop, never quits!
-    while True:
+    try:
+        while True:
 
-        #Deal with button presses
-        if event_queue.qsize() > 0:
-            event = event_queue.get()
-            if event == "button_on":
-                log("Button ON pressed")
-                state = newState(True, state, True)
-            if event == "button_off":
-                log("Button OFF pressed")
-                state = newState(False, state, True)
+            #Deal with button presses
+            if event_queue.qsize() > 0:
+                event = event_queue.get()
+                if event == "button_on":
+                    log("Button ON pressed")
+                    state = newState(True, state, True)
+                if event == "button_off":
+                    log("Button OFF pressed")
+                    state = newState(False, state, True)
 
-        #See if it is time to poll stuff
-        now = time.time()
-        if (now-REMOTE_POLL_INTERVAL) > lastpoll:
-            log("Polling remote ui state")
-            remote_ui_state = getUpdate()
-            state = newState(remote_ui_state, state)
-            lastpoll = now
 
+            #See if it is time to poll stuff
+            now = time.time()
+            if (now-REMOTE_POLL_INTERVAL) > lastpoll:
+                log("Polling remote ui state")
+                remote_ui_state = getUpdate()
+                if remote_ui_state is None:
+                    log("Did not get valid state response")
+                else:
+                    state = newState(remote_ui_state, state)
+                lastpoll = now
+
+            time.sleep(SLEEP_INTERVAL)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        log("Shutting down")
+        GPIO.cleanup()
 
 
 if __name__=="__main__":
