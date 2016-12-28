@@ -51,8 +51,9 @@ def statusSignal(state):
     else:
         return MODE_OFF
 
-def setupGPIO(initalState=False):
-    GPIO.setup(PIN_OUT_MODE, GPIO.OUT, initial=modeSignal(initalState))
+def setupGPIO(initialState=False):
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setup(PIN_OUT_MODE, GPIO.OUT, initial=modeSignal(initialState))
     GPIO.setup(PIN_STATUS_ON, GPIO.OUT, initial=statusSignal(initialState))
     GPIO.setup(PIN_STATUS_OFF, GPIO.OUT, initial=statusSignal(not initialState))
     GPIO.setup([PIN_BUTTON_ON, PIN_BUTTON_OFF], GPIO.IN, GPIO.PUD_UP)
@@ -85,9 +86,12 @@ def stateStrToBool(s):
 
 
 def loadState():
-    state=json.load()
-    with open(STATE_FILE, "r") as f:
-        statedata = json.load(f)
+    try:
+        with open(STATE_FILE, "r") as f:
+            statedata = json.load(f)
+    except:
+        log("Could not open state file")
+        return False
 
     if statedata.has_key("state"):
         return stateStrToBool(statedata["state"])
